@@ -1,3 +1,5 @@
+from typing import Optional
+
 from discord.ext import commands
 import discord
 
@@ -12,10 +14,7 @@ class Mutes(commands.Cog):
         self.bot = bot
 
     @commands.command()
-    async def mute(self, ctx, *args):
-        if len(args) < 1:
-            return
-        user: discord.Member = args[0]
+    async def mute(self, ctx, user: discord.Member, reason: Optional[str]):
         server = session.query(Server).filter(Server.server_id == ctx.guild.id).one_or_none()
 
         # Unknown Server
@@ -43,5 +42,5 @@ class Mutes(commands.Cog):
                 session.commit()
 
         # Add the muted role to the user
-        await user.add_roles(muted_role, reason=args[1] if len(args)>0 else "Goka")
+        await user.add_roles(muted_role, reason=reason if not (reason is None) else "Goka")
             
