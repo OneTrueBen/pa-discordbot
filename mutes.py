@@ -53,6 +53,22 @@ class Mutes(commands.Cog):
             )
         return unmuted_role
 
+    async def getMutedRoles(self, ctx, server):
+        unmuted_role = ctx.guild.get_role(server.unmuted_role_id)
+        muted_role = ctx.guild.get_role(server.muted_role_id)
+        if unmuted_role is None:
+            print(f"The server {server.name} deleted their unmuted role. Now we have to make a new one >:(.")
+            unmuted_role = await self.makeUnmutedRole(ctx)
+            server.unmuted_role_id = unmuted_role.id
+            session.commit()
+        if muted_role is None:
+            print(f"The server {server.name} deleted their muted role. Now we have to make a new one >:(.")
+            muted_role = await self.makeMutedRole(ctx)
+            server.muted_role_id = muted_role.id
+            session.commit()
+
+        return (unmuted_role, muted_role)
+
     @commands.command()
     async def mute(self, ctx, user: discord.Member, reason: Optional[str]):
         server = session.query(Server).filter(Server.server_id == ctx.guild.id).one_or_none()
@@ -73,21 +89,27 @@ class Mutes(commands.Cog):
 
         # Known Server
         else:
-            unmuted_role = ctx.guild.get_role(server.unmuted_role_id)
-            muted_role = ctx.guild.get_role(server.muted_role_id)
-            if unmuted_role is None:
-                print(f"The server {server.name} deleted their unmuted role. Now we have to make a new one >:(.")
-                unmuted_role = await self.makeUnmutedRole(ctx)
-                server.unmuted_role_id = unmuted_role.id
-                session.commit()
-            if muted_role is None:
-                print(f"The server {server.name} deleted their muted role. Now we have to make a new one >:(.")
-                muted_role = await self.makeMutedRole(ctx)
-                server.muted_role_id = muted_role.id
-                session.commit()
+            unmuted_role, muted_role = await self.getMutedRoles(ctx, server)
             
-        # Add the muted role to the user
-        await user.add_roles(muted_role, reason=reason if not (reason is None) else "Goka")
+        # Add the muted role to the user and remove the unmuted role (but only if necessary)
+        if not (muted_role in user.roles):
+            await user.add_roles(muted_role, reason=reason if not (reason is None) else "Goka")
         if unmuted_role in user.roles:
             await user.remove_roles(unmuted_role, reason=reason if not (reason is None) else "Goka")
-            
+
+    @commands.command()
+    async def unmute(self, ctx, user: discord.Member):
+        server = session.query(Server).filter(Server.server_id == ctx.guild.id).one_or_none()
+
+        # Unknown Server
+        if server is None:
+            print("Tried to unmute somebody but literally nobody has ever been muted on this server")
+            return
+
+        unmuted_role, muted_role = await self.getMutedRoles(ctx, server)
+
+        # Add the muted role to the user and remove the unmuted role (but only if necessary)
+        if not (unmuted_role in user.roles):
+            await user.add_roles(unmuted_role)
+        if muted_role in user.roles:
+            await user.remove_roles(muted_role)
