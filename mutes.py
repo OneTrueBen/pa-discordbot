@@ -19,9 +19,13 @@ class Mutes(commands.Cog):
             reason="Muted role changes name color to show who is muted.",
             name="Muted",
             colour=discord.Colour(0xff0000))
-        # muted role should be positioned as high as the bot can make them (just under the bot's own highest role)
-        await muted_role.edit(position=max([role.position for role in ctx.guild.me.roles])-1, reason="Muted role needs to have high precdence to show color")
-        # unmued role should be just above @everyone
+
+        # muted role should have the priority just under the bot's highest permission, shifting other roles down as necessary
+        bot_authority_position = max([role.position for role in ctx.guild.me.roles])
+        role_position_updates = {role:role.position-1 for role in ctx.guild.roles if (muted_role.position < role.position and role.position < bot_authority_position)}
+        role_position_updates[muted_role] = max([role.position for role in ctx.guild.me.roles])-1
+        await ctx.guild.edit_role_positions(role_position_updates, reason="Muted role needs to have high precdence to show color")
+
         return muted_role
 
     # Create muted and unmuted roles, and change existing roles so that only those with the unmuted role can speak and send messages
@@ -30,7 +34,6 @@ class Mutes(commands.Cog):
         bot_authority_position = max([role.position for role in ctx.guild.me.roles])
         # remove talking permissions from all existing roles, so that users need the unmuted role to talk
         for role in ctx.guild.roles:
-                print(f"{role.name}: {role.position}")
                 if role.position < bot_authority_position:
                     # using a bitmask to remove only speaking and message-sending
                     await role.edit(permissions=discord.Permissions(role.permissions.value & 2145384447))
@@ -38,9 +41,16 @@ class Mutes(commands.Cog):
             reason="Unmuted role that the bot needs to work did not previously exist. Users will now be unable to talk without this role.",
             name="Unmuted",
             permissions=discord.Permissions(2099200))
+
         # unmued role should be just above @everyone
-        print(f"About to try to move unmuted role to position {min([role.position for role in ctx.guild.roles])+1}")
         await unmuted_role.edit(position=min([role.position for role in ctx.guild.roles])+1, reason="We don't want unmuted to have precedence over anything")
+
+        # give everyone the unmuted role
+        for member in ctx.guild.members:
+            await member.add_roles(
+                unmuted_role,
+                reason="Assigning unmuted role to everyone. Users will no longer be able to speak or message unless they have this role, though this can be overwritten by channel-specific settings."
+            )
         return unmuted_role
 
     @commands.command()
@@ -67,8 +77,8 @@ class Mutes(commands.Cog):
             muted_role = ctx.guild.get_role(server.muted_role_id)
             if unmuted_role is None:
                 print(f"The server {server.name} deleted their unmuted role. Now we have to make a new one >:(.")
-                muted_role = await self.makeUnmutedRole(ctx)
-                server.unmuted_role_id = muted_role.id
+                unmuted_role = await self.makeUnmutedRole(ctx)
+                server.unmuted_role_id = unmuted_role.id
                 session.commit()
             if muted_role is None:
                 print(f"The server {server.name} deleted their muted role. Now we have to make a new one >:(.")
@@ -78,5 +88,6 @@ class Mutes(commands.Cog):
             
         # Add the muted role to the user
         await user.add_roles(muted_role, reason=reason if not (reason is None) else "Goka")
-        await user.remove_roles(unmuted_role, reason=reason if not (reason is None) else "Goka")
+        if unmuted_role in user.roles:
+            await user.remove_roles(unmuted_role, reason=reason if not (reason is None) else "Goka")
             
