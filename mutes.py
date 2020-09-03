@@ -96,6 +96,11 @@ class Mutes(commands.Cog):
             await user.add_roles(muted_role, reason=reason if not (reason is None) else "Goka")
         if unmuted_role in user.roles:
             await user.remove_roles(unmuted_role, reason=reason if not (reason is None) else "Goka")
+        
+        if reason is None:
+            await ctx.send(f"{user.nick} was muted by {ctx.author.nick}")
+        else:
+            await ctx.send(f"{user.nick} was muted by {ctx.author.nick} because {reason}")
 
     @commands.command()
     async def unmute(self, ctx, user: discord.Member):
@@ -104,6 +109,7 @@ class Mutes(commands.Cog):
         # Unknown Server
         if server is None:
             print("Tried to unmute somebody but literally nobody has ever been muted on this server")
+            await ctx.send("You can't unmute somebody when nobody has ever been muted on this server before.")
             return
 
         unmuted_role, muted_role = await self.getMutedRoles(ctx, server)
@@ -113,3 +119,5 @@ class Mutes(commands.Cog):
             await user.add_roles(unmuted_role)
         if muted_role in user.roles:
             await user.remove_roles(muted_role)
+
+        await ctx.send(f"{user.nick} was unmuted by {ctx.author.nick}")
