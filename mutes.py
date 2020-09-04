@@ -31,12 +31,12 @@ class Mutes(commands.Cog):
             return
 
         time_units = time_units.lower()
-        if time_units == 'seconds':
+        if time_units == 'seconds' or time_units == 'second' or time_units == 's':
             duration_in_seconds = time_amount
-        elif time_units == 'minutes':
+        elif time_units == 'minutes'or time_units == 'minute' or time_units == 'm':
             duration_in_seconds = time_amount * 60
-        elif time_units == 'hours':
-            duration_in_seconds = time_amount * 360
+        elif time_units == 'hours' or time_units == 'hour' or time_units == 'h':
+            duration_in_seconds = time_amount * 3600
         else:
             await ctx.send("Invalid time unit. Please use seconds, minutes, or hours.")
             return
