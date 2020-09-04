@@ -34,7 +34,7 @@ class Mutes(commands.Cog):
         expiration_time = datetime.now() + timedelta(seconds=duration_in_seconds)
 
         if len(session.query(Mute).filter(Mute.muted_id == user.id).all()) > 0:
-            await ctx.send(f"{user.nick} is already muted.")
+            await ctx.send(f"{user.display_name} is already muted.")
             return
 
         server = session.query(Server).filter(Server.server_id == ctx.guild.id).one_or_none()
@@ -75,12 +75,12 @@ class Mutes(commands.Cog):
         
         # Send confirmation message
         if reason is None:
-            await ctx.send(f"{user.nick} was muted by {ctx.author.nick}")
+            await ctx.send(f"{user.display_name} was muted by {ctx.author.display_name}")
         else:
-            await ctx.send(f"{user.nick} was muted by {ctx.author.nick} because {reason}")
+            await ctx.send(f"{user.display_name} was muted by {ctx.author.display_name} because {reason}")
 
         # Schedule the user to be unmuted
-        self.bot.loop.create_task(self.timedUnmute(user, ctx.author, ctx.guild.id, ctx.channel, duration_in_seconds), name=f"unmute {user.nick}")
+        self.bot.loop.create_task(self.timedUnmute(user, ctx.author, ctx.guild.id, ctx.channel, duration_in_seconds), name=f"unmute {user.display_name}")
 
     # the guts of the unmute command, which has a couple different wrappers
     async def unmuteLogic(self, unmuted, unmuter, server_id, channel):
@@ -107,7 +107,7 @@ class Mutes(commands.Cog):
             await unmuted.remove_roles(muted_role)
 
         
-        await channel.send(f"{unmuted.nick} was unmuted by {unmuter.nick}")
+        await channel.send(f"{unmuted.display_name} was unmuted by {unmuter.display_name}")
 
     # the unmute command itself, which pulls the info for the unmute primarily from the context
     @commands.command()
@@ -136,7 +136,7 @@ class Mutes(commands.Cog):
             else:
                 # Schedule the user to be unmuted
                 remaining_time = mute_record.expiration_time - current_time
-                self.bot.loop.create_task(self.timedUnmute(unmuted, unmuter, guild.id, channel, remaining_time.total_seconds()), name=f"unmute {unmuted.nick}")
+                self.bot.loop.create_task(self.timedUnmute(unmuted, unmuter, guild.id, channel, remaining_time.total_seconds()), name=f"unmute {unmuted.display_name}")
 
     # Create a muted role for aesthetic purposes. It doesn't actually do much of anything.
     async def makeMutedRole(self, guild):
