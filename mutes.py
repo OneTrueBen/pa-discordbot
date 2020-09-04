@@ -19,10 +19,17 @@ class Mutes(commands.Cog):
         # discord API is dumb so we need to manually suppress role events we caused ourselves (why can't I just see the author of the edit)
         self.suppress_role_update_events = False
 
+        # a dictionary of member id -> pending unmute tasks so that we can avoid double-unmuting
+        self.pending_unmutes = {}
+
     # GENERAL NOTE: we use "guild" to refer to the discord API's model of a guild/server and "server" to refer to our own server info as stored in the db
 
     @commands.command()
     async def mute(self, ctx, user: discord.Member, time_amount: int, time_units: str, reason: Optional[str]):
+        if user.id in self.pending_unmutes:
+            await ctx.send(f"{user.display_name} is already muted!")
+            return
+
         time_units = time_units.lower()
         if time_units == 'seconds':
             duration_in_seconds = time_amount
@@ -66,10 +73,16 @@ class Mutes(commands.Cog):
             await ctx.send(f"{user.display_name} was muted by {ctx.author.display_name} because {reason}")
 
         # Schedule the user to be unmuted
-        self.bot.loop.create_task(self.timedUnmute(user, ctx.author, ctx.guild.id, ctx.channel, duration_in_seconds), name=f"unmute {user.display_name}")
+        unmute_task = self.bot.loop.create_task(self.timedUnmute(user, ctx.author, ctx.guild.id, ctx.channel, duration_in_seconds), name=f"unmute {user.display_name}")
+        self.pending_unmutes[user.id] = unmute_task
 
     # the guts of the unmute command, which has a couple different wrappers
     async def unmuteLogic(self, unmuted, unmuter, server_id, channel):
+        # if there was an unmute pending for this user, cancel it 
+        if unmuted.id in self.pending_unmutes:
+            pending_unmute = self.pending_unmutes.pop(unmuted.id)
+            pending_unmute.cancel()
+
         server = session.query(Server).filter(Server.server_id == server_id).one_or_none()
 
         # Unknown Server
@@ -122,7 +135,9 @@ class Mutes(commands.Cog):
             else:
                 # Schedule the user to be unmuted
                 remaining_time = mute_record.expiration_time - current_time
-                self.bot.loop.create_task(self.timedUnmute(unmuted, unmuter, guild.id, channel, remaining_time.total_seconds()), name=f"unmute {unmuted.display_name}")
+                unmute_task = self.bot.loop.create_task(self.timedUnmute(unmuted, unmuter, guild.id, channel, remaining_time.total_seconds()), name=f"unmute {unmuted.display_name}")
+                self.pending_unmutes[unmuted.id] = unmute_task
+
         
         
         for guild in self.bot.guilds:
