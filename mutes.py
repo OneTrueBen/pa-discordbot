@@ -16,6 +16,9 @@ class Mutes(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+        # discord API is dumb so we need to manually suppress role events we caused ourselves (why can't I just see the author of the edit)
+        self.suppress_role_update_events = False
+
     # GENERAL NOTE: we use "guild" to refer to the discord API's model of a guild/server and "server" to refer to our own server info as stored in the db
 
     @commands.command()
@@ -37,25 +40,8 @@ class Mutes(commands.Cog):
             await ctx.send(f"{user.display_name} is already muted.")
             return
 
-        server = session.query(Server).filter(Server.server_id == ctx.guild.id).one_or_none()
-
-        # Unknown Server
-        if server is None:
-            unmuted_role = await self.makeUnmutedRole(ctx)
-            muted_role = await self.makeMutedRole(ctx)
-            
-            # Add the new server, now with new muted and unmuted roles, to the database
-            server = Server()
-            server.server_id = ctx.guild.id
-            server.name = ctx.guild.name
-            server.muted_role_id = muted_role.id
-            server.unmuted_role_id = unmuted_role.id
-            session.add(server)
-            # we'll commit in a second
-
-        # Known Server
-        else:
-            unmuted_role, muted_role = await self.getMutedRoles(ctx.guild, server)
+        server = await self.getServerFromGuild(ctx.guild)
+        unmuted_role, muted_role = await self.getMutedRoles(ctx.guild, server)
             
         # Add a record of the mute to the database
         mute_record = Mute()
@@ -119,9 +105,9 @@ class Mutes(commands.Cog):
         await asyncio.sleep(delay_in_seconds)
         await self.unmuteLogic(unmuted, unmuter, server_id, channel)
 
-    # When we restart the bot we need to restart all of our mute timers and account for those that should have gone off while we were shut down
     @commands.Cog.listener()
     async def on_ready(self):
+        # Resume all of our mute timers and account for those that should have gone off while we were shut down
         current_time = datetime.now()
         for mute_record in session.query(Mute).all():
             guild = self.bot.get_guild(mute_record.server_id)
@@ -137,6 +123,80 @@ class Mutes(commands.Cog):
                 # Schedule the user to be unmuted
                 remaining_time = mute_record.expiration_time - current_time
                 self.bot.loop.create_task(self.timedUnmute(unmuted, unmuter, guild.id, channel, remaining_time.total_seconds()), name=f"unmute {unmuted.display_name}")
+        
+        
+        for guild in self.bot.guilds:
+            server = await self.getServerFromGuild(guild)
+            unmuted_role, muted_role = await self.getMutedRoles(guild, server)
+
+            # Make sure none of the roles under our jursidiction other than the unmuted role grant talking privileges
+            for role in guild.roles:
+                if (guild.default_role.position < role.position and role.position < guild.me.top_role.position and
+                (role.id != unmuted_role.id) and (role.permissions.speak or role.permissions.send_messages)):
+                    self.suppress_role_update_events = True
+                    await role.edit(permissions=discord.Permissions(role.permissions.value & 2145384447))
+                    self.suppress_role_update_events = False
+
+            # Make sure that anyone who is not muted has the unmuted role so they can talk
+            for member in guild.members:
+                if not muted_role in member.roles:
+                    await member.add_roles(
+                        unmuted_role,
+                        reason="This user did not have the muted role or the unmuted role. We will assume they joined while the bot was disconnected and should be unmuted."
+                    )
+
+    # Whenever a new user joins, give them unmuted role so they can speak
+    @commands.Cog.listener()
+    async def on_member_join(self, member):
+        server = await self.getServerFromGuild(guild)
+        unmuted_role, muted_role = await self.getMutedRoles(guild, server)
+        await member.add_roles(
+            unmuted_role,
+            reason="All new users need the unmuted role to speak."
+        )
+
+    # Whenever a new role is added, if it is within the bots jurisdiction, make sure it doesn't have speaking or messaging perms or mutes won't work
+    @commands.Cog.listener()
+    async def on_guild_role_create(self, role):
+        if not self.suppress_role_update_events and (role.permissions.speak or role.permissions.send_messages):
+            # ideally we would send a message to the person who created the role but apparently thats not possible thanks discord
+            # if the bot knows what a mods channel is, we can send a message there
+            if role.guild.default_role.position < role.position and role.position < role.guild.me.top_role.position:
+                self.suppress_role_update_events = True
+                await role.edit(permissions=discord.Permissions(role.permissions.value & 2145384447))
+                self.suppress_role_update_events = False
+
+    # Likewise when an existing role is modified
+    @commands.Cog.listener()
+    async def on_guild_role_update(self, _, updated_role):
+        if not self.suppress_role_update_events and (updated_role.permissions.speak or updated_role.permissions.send_messages):
+            # ideally we would send a message to the person who created the role but apparently thats not possible thanks discord
+            # if the bot knows what a mods channel is, we can send a message there
+            if updated_role.guild.default_role.position < updated_role.position and updated_role.position < updated_role.guild.me.top_role.position:
+                self.suppress_role_update_events = True
+                await updated_role.edit(permissions=discord.Permissions(updated_role.permissions.value & 2145384447))
+                self.suppress_role_update_events = False
+
+    async def getServerFromGuild(self, guild):
+        server = session.query(Server).filter(Server.server_id == guild.id).one_or_none()
+        if server is None:
+            server = await self.registerServer
+        return server
+
+    async def registerServer(self, guild):
+        muted_role = await self.makeMutedRole(guild)
+        unmuted_role = await self.makeUnmutedRole(guild)
+        
+        # Add the new server, now with new muted and unmuted roles, to the database
+        server = Server()
+        server.server_id = guild.id
+        server.name = guild.name
+        server.muted_role_id = muted_role.id
+        server.unmuted_role_id = unmuted_role.id
+        session.add(server)
+        session.commit()
+        
+        return server
 
     # Create a muted role for aesthetic purposes. It doesn't actually do much of anything.
     async def makeMutedRole(self, guild):
@@ -146,29 +206,32 @@ class Mutes(commands.Cog):
             colour=discord.Colour(0xff0000))
 
         # muted role should have the priority just under the bot's highest permission, shifting other roles down as necessary
-        bot_authority_position = max([role.position for role in guild.me.roles])
-        role_position_updates = {role:role.position-1 for role in guild.roles if (muted_role.position < role.position and role.position < bot_authority_position)}
-        role_position_updates[muted_role] = max([role.position for role in guild.me.roles])-1
+        role_position_updates = {role:role.position-1 for role in guild.roles if (muted_role.position < role.position and role.position < guild.me.top_role.position)}
+        role_position_updates[muted_role] = guild.me.top_role.position-1
+        self.suppress_role_update_events = True
         await guild.edit_role_positions(role_position_updates, reason="Muted role needs to have high precdence to show color")
+        self.suppress_role_update_events = False
 
         return muted_role
 
     # Create unmuted role, and change existing roles so that only those with the unmuted role can speak and send messages
     async def makeUnmutedRole(self, guild):
-        # this is the position of the bots highest role. It cannot affect any roles that are higher.
-        bot_authority_position = max([role.position for role in guild.me.roles])
         # remove talking permissions from all existing roles, so that users need the unmuted role to talk
         for role in guild.roles:
-                if role.position < bot_authority_position:
+                if role.position < guild.me.top_role.position:
                     # using a bitmask to remove only speaking and message-sending
+                    self.suppress_role_update_events = True
                     await role.edit(permissions=discord.Permissions(role.permissions.value & 2145384447))
+                    self.suppress_role_update_events = False
         unmuted_role = await guild.create_role(
             reason="Unmuted role that the bot needs to work did not previously exist. Users will now be unable to talk without this role.",
             name="Unmuted",
             permissions=discord.Permissions(2099200))
 
         # unmued role should be just above @everyone
-        await unmuted_role.edit(position=min([role.position for role in ctx.guild.roles])+1, reason="We don't want unmuted to have precedence over anything")
+        self.suppress_role_update_events = True
+        await unmuted_role.edit(position=min([role.position for role in guild.roles])+1, reason="We don't want unmuted to have precedence over anything")
+        self.suppress_role_update_events = False
 
         # give everyone the unmuted role
         for member in guild.members:
@@ -179,17 +242,17 @@ class Mutes(commands.Cog):
         return unmuted_role
 
     async def getMutedRoles(self, guild, server):
-        unmuted_role = guild.get_role(server.unmuted_role_id)
         muted_role = guild.get_role(server.muted_role_id)
-        if unmuted_role is None:
-            print(f"The server {server.name} deleted their unmuted role. Now we have to make a new one >:(.")
-            unmuted_role = await self.makeUnmutedRole(guild)
-            server.unmuted_role_id = unmuted_role.id
-            session.commit()
+        unmuted_role = guild.get_role(server.unmuted_role_id)
         if muted_role is None:
             print(f"The server {server.name} deleted their muted role. Now we have to make a new one >:(.")
             muted_role = await self.makeMutedRole(guild)
             server.muted_role_id = muted_role.id
+            session.commit()
+        if unmuted_role is None:
+            print(f"The server {server.name} deleted their unmuted role. Now we have to make a new one >:(.")
+            unmuted_role = await self.makeUnmutedRole(guild)
+            server.unmuted_role_id = unmuted_role.id
             session.commit()
 
         return (unmuted_role, muted_role)
