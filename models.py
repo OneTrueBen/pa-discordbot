@@ -43,4 +43,5 @@ class Mute(Base):
     server_id = Column(BIGINT(unsigned=True))
     muted_id = Column(Integer)
     muter_id = Column(Integer)
+    channel_id = Column(Integer)
     expiration_time = Column(DateTime)
