@@ -11,8 +11,6 @@ from modrole import mod_only
 
 session = Session()
 
-SPECLE_MUTED_ROLE_ID = 1035498783
-
 class Mutes(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -204,7 +202,7 @@ class Mutes(commands.Cog):
     async def getServerFromGuild(self, guild):
         server = session.query(Server).filter(Server.server_id == guild.id).one_or_none()
         if server is None:
-            server = await self.registerServer
+            server = await self.registerServer(guild)
         return server
 
     async def registerServer(self, guild):
