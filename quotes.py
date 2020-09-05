@@ -4,6 +4,7 @@ import discord
 from sqlalchemy import desc
 import random
 import typing
+from modrole import mod_only
 
 session = Session()
 
@@ -31,6 +32,7 @@ class Quotes(commands.Cog):
         await ctx.send(r)
     
     @commands.command()
+    @mod_only()
     async def addquote(self, ctx, message_id):
         m = await ctx.channel.fetch_message(message_id)
         if m.guild.id == ctx.guild.id:
