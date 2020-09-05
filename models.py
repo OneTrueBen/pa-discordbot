@@ -32,6 +32,7 @@ class Server(Base):
     
     # if your server name has more than 100 chars tough luck
     name = Column(String(100))
+<<<<<<< HEAD
     muted_role_id = Column(Integer)
 
 class User(Base):
@@ -39,3 +40,6 @@ class User(Base):
     id = Column(Integer, primary_key=True)
     user_id = Column(BIGINT(unsigned=True), unique=True)
     server = Column(Integer, ForeignKey('servers.id'))
+=======
+    muted_role_id = Column(Integer)
+>>>>>>> 3d7964f... Add logic for mutes BUT NOT FOR UNMUTES
