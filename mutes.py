@@ -7,6 +7,7 @@ from discord.ext import commands
 import discord
 
 from models import Server, Mute, Session
+from modrole import mod_only
 
 session = Session()
 
@@ -25,6 +26,7 @@ class Mutes(commands.Cog):
     # GENERAL NOTE: we use "guild" to refer to the discord API's model of a guild/server and "server" to refer to our own server info as stored in the db
 
     @commands.command()
+    @mod_only()
     async def mute(self, ctx, user: discord.Member, time_amount: int, time_units: str, reason: Optional[str]):
         if user.id in self.pending_unmutes:
             await ctx.send(f"{user.display_name} is already muted!")
@@ -114,6 +116,7 @@ class Mutes(commands.Cog):
     
     # the unmute command itself, which pulls the info for the unmute primarily from the context
     @commands.command()
+    @mod_only()
     async def unmute(self, ctx, user: discord.Member):
         await self.unmuteLogic(user, ctx.author, ctx.guild.id, ctx.channel)
 
