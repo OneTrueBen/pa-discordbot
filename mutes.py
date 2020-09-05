@@ -78,10 +78,11 @@ class Mutes(commands.Cog):
 
     # the guts of the unmute command, which has a couple different wrappers
     async def unmuteLogic(self, unmuted, unmuter, server_id, channel):
-        # if there was an unmute pending for this user, cancel it 
+        # we do this immediately so that the timed unmute can't go off while we're running. We can't cancel yet though because otherwise timed unmutes kill themselves.
         if unmuted.id in self.pending_unmutes:
             pending_unmute = self.pending_unmutes.pop(unmuted.id)
-            pending_unmute.cancel()
+        else:
+            pending_unmute = None
 
         server = session.query(Server).filter(Server.server_id == server_id).one_or_none()
 
@@ -104,10 +105,13 @@ class Mutes(commands.Cog):
             await unmuted.add_roles(unmuted_role)
         if muted_role in unmuted.roles:
             await unmuted.remove_roles(muted_role)
-
         
         await channel.send(f"{unmuted.display_name} was unmuted by {unmuter.display_name}")
 
+        # if there was an unmute pending for this user, cancel it 
+        if not (pending_unmute is None):
+            pending_unmute.cancel()
+    
     # the unmute command itself, which pulls the info for the unmute primarily from the context
     @commands.command()
     async def unmute(self, ctx, user: discord.Member):
@@ -116,7 +120,9 @@ class Mutes(commands.Cog):
     # A little wrapper of a wrapper that allows us to use unmute with threading timers
     async def timedUnmute(self, unmuted, unmuter, server_id, channel, delay_in_seconds):
         await asyncio.sleep(delay_in_seconds)
-        await self.unmuteLogic(unmuted, unmuter, server_id, channel)
+        # if the id is missing, it means that a manual unmute is currently running
+        if unmuted.id in self.pending_unmutes:
+            await self.unmuteLogic(unmuted, unmuter, server_id, channel)
 
     @commands.Cog.listener()
     async def on_ready(self):
@@ -215,6 +221,8 @@ class Mutes(commands.Cog):
 
     # Create a muted role for aesthetic purposes. It doesn't actually do much of anything.
     async def makeMutedRole(self, guild):
+        self.suppress_role_update_events = True
+
         muted_role = await guild.create_role(
             reason="Muted role changes name color to show who is muted.",
             name="Muted",
@@ -223,29 +231,28 @@ class Mutes(commands.Cog):
         # muted role should have the priority just under the bot's highest permission, shifting other roles down as necessary
         role_position_updates = {role:role.position-1 for role in guild.roles if (muted_role.position < role.position and role.position < guild.me.top_role.position)}
         role_position_updates[muted_role] = guild.me.top_role.position-1
-        self.suppress_role_update_events = True
         await guild.edit_role_positions(role_position_updates, reason="Muted role needs to have high precdence to show color")
-        self.suppress_role_update_events = False
 
+        self.suppress_role_update_events = False
         return muted_role
 
     # Create unmuted role, and change existing roles so that only those with the unmuted role can speak and send messages
     async def makeUnmutedRole(self, guild):
+        self.suppress_role_update_events = True
+
         # remove talking permissions from all existing roles, so that users need the unmuted role to talk
         for role in guild.roles:
                 if role.position < guild.me.top_role.position:
                     # using a bitmask to remove only speaking and message-sending
-                    self.suppress_role_update_events = True
-                    await role.edit(permissions=discord.Permissions(role.permissions.value & 2145384447))
-                    self.suppress_role_update_events = False
+                    await role.edit(permissions=discord.Permissions(role.permissions.value & 2145384447))      
         unmuted_role = await guild.create_role(
             reason="Unmuted role that the bot needs to work did not previously exist. Users will now be unable to talk without this role.",
             name="Unmuted",
             permissions=discord.Permissions(2099200))
 
         # unmued role should be just above @everyone
-        self.suppress_role_update_events = True
         await unmuted_role.edit(position=min([role.position for role in guild.roles])+1, reason="We don't want unmuted to have precedence over anything")
+
         self.suppress_role_update_events = False
 
         # give everyone the unmuted role
