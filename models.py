@@ -17,3 +17,9 @@ class Quote(Base):
     added_by = Column(String)
     number = Column(Integer)
 
+class ModRole(Base):
+    __tablename__ = 'modroles'
+    id = Column(Integer, primary_key=True)
+
+    server = Column(String)
+    role = Column(String)
