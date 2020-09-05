@@ -22,9 +22,8 @@ make the database
 alembic upgrade head
 ```
 
-then set the token
+then copy `settings.py.example` to `settings.py` and fill out the settings. then run:
 ```
-export PA_DISCORD_TOKEN="blah blah your token lol"
 python start.py
 ```
 it is different on windows but i am not going to tell you how to do it :)
