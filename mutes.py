@@ -170,6 +170,7 @@ class Mutes(commands.Cog):
     # Whenever a new user joins, give them unmuted role so they can speak
     @commands.Cog.listener()
     async def on_member_join(self, member):
+        guild = member.guild
         server = await self.getServerFromGuild(guild)
         unmuted_role, muted_role = await self.getMutedRoles(guild, server)
         await member.add_roles(
@@ -191,7 +192,13 @@ class Mutes(commands.Cog):
     # Likewise when an existing role is modified
     @commands.Cog.listener()
     async def on_guild_role_update(self, _, updated_role):
-        if not self.suppress_role_update_events and (updated_role.permissions.speak or updated_role.permissions.send_messages):
+        if self.suppress_role_update_events:
+            return
+        print("guild role update")
+        guild = updated_role.guild
+        server = await self.getServerFromGuild(guild)
+        unmuted_role, _ = await self.getMutedRoles(guild, server)
+        if (unmuted_role.id != updated_role.id) and (updated_role.permissions.speak or updated_role.permissions.send_messages):
             # ideally we would send a message to the person who created the role but apparently thats not possible thanks discord
             # if the bot knows what a mods channel is, we can send a message there
             if updated_role.guild.default_role.position < updated_role.position and updated_role.position < updated_role.guild.me.top_role.position:
