@@ -1,9 +1,12 @@
 from typing import Optional
+from datetime import datetime, timedelta
+from threading import Timer
+import asyncio
 
 from discord.ext import commands
 import discord
 
-from models import Server, Session
+from models import Server, Mute, Session
 
 session = Session()
 
@@ -13,7 +16,7 @@ class Mutes(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    # Create muted and unmuted roles, and change existing roles so that only those with the unmuted role can speak and send messages
+    # Create a muted role for aesthetic purposes. It doesn't actually do much of anything.
     async def makeMutedRole(self, ctx):
         muted_role = await ctx.guild.create_role(
             reason="Muted role changes name color to show who is muted.",
@@ -28,7 +31,7 @@ class Mutes(commands.Cog):
 
         return muted_role
 
-    # Create muted and unmuted roles, and change existing roles so that only those with the unmuted role can speak and send messages
+    # Create unmuted role, and change existing roles so that only those with the unmuted role can speak and send messages
     async def makeUnmutedRole(self, ctx):
         # this is the position of the bots highest role. It cannot affect any roles that are higher.
         bot_authority_position = max([role.position for role in ctx.guild.me.roles])
@@ -70,7 +73,24 @@ class Mutes(commands.Cog):
         return (unmuted_role, muted_role)
 
     @commands.command()
-    async def mute(self, ctx, user: discord.Member, reason: Optional[str]):
+    async def mute(self, ctx, user: discord.Member, time_amount: int, time_units: str, reason: Optional[str]):
+        time_units = time_units.lower()
+        if time_units == 'seconds':
+            duration_in_seconds = time_amount
+        elif time_units == 'minutes':
+            duration_in_seconds = time_amount * 60
+        elif time_units == 'hours':
+            duration_in_seconds = time_amount * 360
+        else:
+            await ctx.send("Invalid time unit. Please use seconds, minutes, or hours.")
+            return
+
+        expiration_time = datetime.now() + timedelta(seconds=duration_in_seconds)
+
+        if len(session.query(Mute).filter(Mute.muted_id == user.id).all()) > 0:
+            await ctx.send(f"{user.nick} is already muted.")
+            return
+
         server = session.query(Server).filter(Server.server_id == ctx.guild.id).one_or_none()
 
         # Unknown Server
@@ -85,22 +105,36 @@ class Mutes(commands.Cog):
             server.muted_role_id = muted_role.id
             server.unmuted_role_id = unmuted_role.id
             session.add(server)
-            session.commit()
+            # we'll commit in a second
 
         # Known Server
         else:
             unmuted_role, muted_role = await self.getMutedRoles(ctx, server)
             
+        # Add a record of the mute to the database
+        mute_record = Mute()
+        mute_record.server_id = ctx.guild.id
+        mute_record.muted_id = user.id
+        mute_record.muter_id = ctx.author.id
+        mute_record.expiration_time = expiration_time
+        session.add(mute_record)
+        session.commit()
+
         # Add the muted role to the user and remove the unmuted role (but only if necessary)
         if not (muted_role in user.roles):
             await user.add_roles(muted_role, reason=reason if not (reason is None) else "Goka")
         if unmuted_role in user.roles:
             await user.remove_roles(unmuted_role, reason=reason if not (reason is None) else "Goka")
         
+        # Send confirmation message
         if reason is None:
             await ctx.send(f"{user.nick} was muted by {ctx.author.nick}")
         else:
             await ctx.send(f"{user.nick} was muted by {ctx.author.nick} because {reason}")
+
+        # Schedule the user to be unmuted
+        timer = Timer(duration_in_seconds, self.timed_unmute, args=(ctx, user))
+        timer.start()
 
     @commands.command()
     async def unmute(self, ctx, user: discord.Member):
@@ -114,6 +148,12 @@ class Mutes(commands.Cog):
 
         unmuted_role, muted_role = await self.getMutedRoles(ctx, server)
 
+        # Remove mute record from the database. There should only ever be one, but we'll get rid of all of them just in case.
+        mute_records = session.query(Mute).filter(Mute.muted_id == user.id).all()
+        for record in mute_records:
+            session.delete(record)
+        session.commit()
+
         # Add the muted role to the user and remove the unmuted role (but only if necessary)
         if not (unmuted_role in user.roles):
             await user.add_roles(unmuted_role)
@@ -121,3 +161,7 @@ class Mutes(commands.Cog):
             await user.remove_roles(muted_role)
 
         await ctx.send(f"{user.nick} was unmuted by {ctx.author.nick}")
+
+    # A little wrapper that allows us to use unmute with threading timers
+    def timed_unmute(self, ctx, user):
+        asyncio.run_coroutine_threadsafe(self.unmute(ctx, user), self.bot.loop)

@@ -33,7 +33,14 @@ class Server(Base):
     # if your server name has more than 100 chars tough luck
     name = Column(String(100))
     muted_role_id = Column(Integer)
-<<<<<<< HEAD
-=======
     unmuted_role_id = Column(Integer)
->>>>>>> 071a776... Reworked to use unmuted role concept, not yet working though
+
+
+class Mute(Base):
+    __tablename__ = 'mutes'
+    id = Column(Integer, primary_key=True)
+
+    server_id = Column(BIGINT(unsigned=True))
+    muted_id = Column(Integer)
+    muter_id = Column(Integer)
+    expiration_time = Column(DateTime)
