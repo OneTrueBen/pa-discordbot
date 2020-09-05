@@ -33,3 +33,7 @@ class Server(Base):
     # if your server name has more than 100 chars tough luck
     name = Column(String(100))
     muted_role_id = Column(Integer)
+<<<<<<< HEAD
+=======
+    unmuted_role_id = Column(Integer)
+>>>>>>> 071a776... Reworked to use unmuted role concept, not yet working though
