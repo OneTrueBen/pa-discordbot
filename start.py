@@ -1,4 +1,8 @@
 import os
 from client import client
+from settings import settings
 
-client.run(os.environ.get('PA_DISCORD_TOKEN'))
+token = settings.get('token')
+
+
+client.run(token)
