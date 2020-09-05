@@ -160,12 +160,14 @@ class Mutes(commands.Cog):
                     self.suppress_role_update_events = False
 
             # Make sure that anyone who is not muted has the unmuted role so they can talk
+            print(f"Checking all member of {guild.name} to make sure they have the unmuted role (as long as they're not muted).")
             for member in guild.members:
                 if not muted_role in member.roles:
                     await member.add_roles(
                         unmuted_role,
                         reason="This user did not have the muted role or the unmuted role. We will assume they joined while the bot was disconnected and should be unmuted."
                     )
+            print(f"\t Done performing unmuted check on {guild.name}.")
 
     # Whenever a new user joins, give them unmuted role so they can speak
     @commands.Cog.listener()
@@ -194,7 +196,7 @@ class Mutes(commands.Cog):
     async def on_guild_role_update(self, _, updated_role):
         if self.suppress_role_update_events:
             return
-        print("guild role update")
+        print("role update detected")
         guild = updated_role.guild
         server = await self.getServerFromGuild(guild)
         unmuted_role, _ = await self.getMutedRoles(guild, server)
@@ -264,11 +266,13 @@ class Mutes(commands.Cog):
         self.suppress_role_update_events = False
 
         # give everyone the unmuted role
+        print(f"Giving everyone in {guild.name} the new unmuted role...")
         for member in guild.members:
             await member.add_roles(
                 unmuted_role,
                 reason="Assigning unmuted role to everyone. Users will no longer be able to speak or message unless they have this role, though this can be overwritten by channel-specific settings."
             )
+        print(f"\tDone giving everyone the unmuted role.")
         return unmuted_role
 
     async def getMutedRoles(self, guild, server):
