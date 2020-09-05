@@ -2,6 +2,8 @@ import discord
 from discord.ext import commands
 from quotes import Quotes
 from modrole import ModRoles
+from mutes import Mutes
+
 client = commands.Bot(command_prefix="*")
 
 
@@ -12,3 +14,4 @@ async def on_ready():
 
 client.add_cog(Quotes(client))
 client.add_cog(ModRoles(client))
+client.add_cog(Mutes(client))
