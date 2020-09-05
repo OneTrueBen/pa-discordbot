@@ -1,6 +1,7 @@
-from sqlalchemy import Column, Integer, String, DateTime
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.dialects.mysql import BIGINT
 engine = create_engine('sqlite:///db.sqlite3')
 from sqlalchemy.ext.declarative import declarative_base
 Base = declarative_base()
@@ -23,3 +24,18 @@ class ModRole(Base):
 
     server = Column(String)
     role = Column(String)
+
+class Server(Base):
+    __tablename__ = 'servers'
+    id = Column(Integer, primary_key=True)
+    server_id = Column(BIGINT(unsigned=True), unique=True)
+    
+    # if your server name has more than 100 chars tough luck
+    name = Column(String(100))
+    muted_role_id = Column(Integer)
+
+class User(Base):
+    __tablename__ = 'users'
+    id = Column(Integer, primary_key=True)
+    user_id = Column(BIGINT(unsigned=True), unique=True)
+    server = Column(Integer, ForeignKey('servers.id'))
