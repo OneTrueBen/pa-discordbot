@@ -26,3 +26,14 @@ class Aliases(commands.Cog):
             session.commit()
             
             await ctx.send(f"Added alias '{new_alias}' for command '{original_command}'")
+
+    @commands.command()
+    @mod_only()
+    async def removealias(self, ctx, alias_to_remove: str):
+        # there should only ever be one, but just in case we'll wipe all matching aliases.
+        for alias_record in session.query(Alias).filter(Alias.alias == alias_to_remove).all():
+            await ctx.send(f"Removed alias '{alias_to_remove}' for command '{alias_record.command}'")
+            session.delete(alias_record)
+        session.commit()
+
+        
