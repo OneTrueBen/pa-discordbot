@@ -5,12 +5,27 @@ from sqlalchemy import desc
 import random
 import typing
 from modrole import mod_only
+from datetime import datetime
 
 session = Session()
 
 class Quotes(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+
+    @classmethod
+    async def insert_quote(cls, ctx, author_id, content, created_at, server_id, added_by_id):
+        q = Quote()
+        q.author = author_id
+        q.message = content
+        q.time_sent = created_at
+        q.server = server_id
+        q.added_by = added_by_id
+        highest = session.query(Quote).filter(Quote.server==ctx.guild.id).order_by(desc(Quote.id)).first()
+        q.number = highest.number+1 if highest else 1
+        session.add(q)
+        session.commit()
+        await ctx.send(f'added. it\'s quote {q.number}')
 
     @commands.command()
     async def quote(self, ctx, arg: typing.Union[int, discord.Member, None]):
@@ -33,20 +48,14 @@ class Quotes(commands.Cog):
     
     @commands.command()
     @mod_only()
-    async def addquote(self, ctx, message_id):
-        m = await ctx.channel.fetch_message(message_id)
-        if m.guild.id == ctx.guild.id:
-            q = Quote()
-            q.author = m.author.id
-            q.message = m.content
-            q.time_sent = m.created_at
-            q.server = m.guild.id
-            q.added_by = ctx.author.id
-            highest = session.query(Quote).filter(Quote.server==ctx.guild.id).order_by(desc(Quote.id)).first()
-            q.number = highest.number+1 if highest else 1
-            session.add(q)
-            session.commit()
-            await ctx.send(f'added. it\'s quote {q.number}')
+    async def addquote(self, ctx, message: typing.Union[int, str], from_user: typing.Optional[discord.Member]):
+        if type(message) is int:
+            m = await ctx.channel.fetch_message(message)
+            if m.guild.id == ctx.guild.id:
+                await self.insert_quote(ctx, m.author.id, m.content, datetime.now(), m.guild.id, ctx.author.id)
+        else:
+            await self.insert_quote(ctx, from_user.id, message, datetime.now(), ctx.guild.id, ctx.author.id)
+            
 
 
 
