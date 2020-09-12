@@ -45,3 +45,11 @@ class Mute(Base):
     muter_id = Column(Integer)
     channel_id = Column(Integer)
     expiration_time = Column(DateTime)
+
+class Alias(Base):
+    __tablename__ = 'aliases'
+    id = Column(Integer, primary_key=True)
+
+    server_id = Column(BIGINT(unsigned=True))
+    alias = Column(String)
+    command = Column(String)
