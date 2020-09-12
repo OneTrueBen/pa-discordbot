@@ -20,7 +20,7 @@ async def on_command_error(ctx, error):
         words = msg.split(' ')
         cmd = words[0]
         args = words[1:]
-        aliased_command = session.query(Alias).filter(Alias.server_id == ctx.guild.id and Alias.alias == cmd).one_or_none()
+        aliased_command = session.query(Alias).filter(Alias.server_id == ctx.guild.id, Alias.alias == cmd).one_or_none()
         if not (aliased_command is None):
             new_msg = ' '.join([aliased_command.command] + args)
             ctx.message.content = new_msg
