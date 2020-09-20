@@ -162,7 +162,7 @@ class Mutes(commands.Cog):
             # Make sure that anyone who is not muted has the unmuted role so they can talk
             print(f"Checking all member of {guild.name} to make sure they have the unmuted role (as long as they're not muted).")
             for member in guild.members:
-                if not muted_role in member.roles:
+                if not (muted_role in member.roles or unmuted_role in member.roles):
                     await member.add_roles(
                         unmuted_role,
                         reason="This user did not have the muted role or the unmuted role. We will assume they joined while the bot was disconnected and should be unmuted."
