@@ -29,12 +29,22 @@ def mod_only():
             if len(modroles) <= 0:
                 await ctx.send('no!!')
                 return
-            
-            
             return await func(*args)
         return wrapped
     return wrapper
 
+def server_owner_only():
+    def wrapper(func):
+        @functools.wraps(func)
+        async def wrapped(*args):
+            ctx = next(a for a in args if type(a) is commands.context.Context)
+            if ctx.author.id == ctx.guild.owner_id:
+                return await func(*args)
+            else:
+                await ctx.send('no!!!!')
+                return
+        return wrapped
+    return wrapper
 
     
 
@@ -42,12 +52,8 @@ class ModRoles(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-
-
-    
-    
     @commands.command()
-    @owner_only()
+    @server_owner_only()
     async def addmodrole(self, ctx, role_id):
         match = session.query(ModRole).filter(ModRole.server == ctx.guild.id, ModRole.role == role_id).first()
         if match:
