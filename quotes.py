@@ -47,6 +47,18 @@ class Quotes(commands.Cog):
         await ctx.send(r)
     
     @commands.command()
+    async def sq(self, ctx, *, arg):
+        server = ctx.guild.id
+        quotes = session.query(Quote).filter(Quote.server == server)
+
+        q = quotes.filter(Quote.message.like(f"%{arg}%")).first()
+        if q is None:
+            await ctx.send('nothing was found')
+        author = await self.bot.fetch_user(q.author)
+        r = f'"{q.message}"\n—{author.name} (Quote #{q.number})'
+        await ctx.send(r)
+    
+    @commands.command()
     @mod_only()
     async def addquote(self, ctx, message: typing.Union[int, str], from_user: typing.Optional[discord.Member]):
         if type(message) is int:
