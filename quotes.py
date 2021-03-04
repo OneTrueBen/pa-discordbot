@@ -14,9 +14,9 @@ class Quotes(commands.Cog):
         self.bot = bot
 
     @classmethod
-    async def insert_quote(cls, ctx, author_id, content, created_at, server_id, added_by_id):
+    async def insert_quote(cls, ctx, author, content, created_at, server_id, added_by_id):
         q = Quote()
-        q.author = author_id
+        q.author = author.id
         q.message = content
         q.time_sent = created_at
         q.server = server_id
@@ -25,7 +25,7 @@ class Quotes(commands.Cog):
         q.number = highest.number+1 if highest else 1
         session.add(q)
         session.commit()
-        await ctx.send(f'added. it\'s quote {q.number}')
+        await ctx.send(f'added. it\'s quote {q.number}\n"{q.message}"\n—{author.name} (Quote #{q.number})')
 
     @commands.command()
     async def quote(self, ctx, arg: typing.Union[int, discord.Member, None]):
@@ -64,9 +64,9 @@ class Quotes(commands.Cog):
         if type(message) is int:
             m = await ctx.channel.fetch_message(message)
             if m.guild.id == ctx.guild.id:
-                await self.insert_quote(ctx, m.author.id, m.content, datetime.now(), m.guild.id, ctx.author.id)
+                await self.insert_quote(ctx, m.author, m.content, datetime.now(), m.guild.id, ctx.author.id)
         else:
-            await self.insert_quote(ctx, from_user.id, message, datetime.now(), ctx.guild.id, ctx.author.id)
+            await self.insert_quote(ctx, from_user, message, datetime.now(), ctx.guild.id, ctx.author.id)
             
 
 
