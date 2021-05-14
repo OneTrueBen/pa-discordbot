@@ -27,7 +27,7 @@ def mod_only():
             modroles = session.query(ModRole.role).filter(ModRole.server == ctx.guild.id, ModRole.role.in_(roleids)).all()
             modroles = [value for value, in modroles] #unpack it
             if len(modroles) <= 0:
-                await ctx.send('no!!')
+                await ctx.send('no!! power hungry.....')
                 return
             return await func(*args)
         return wrapped
