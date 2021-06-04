@@ -67,7 +67,31 @@ class Quotes(commands.Cog):
                 await self.insert_quote(ctx, m.author, m.content, datetime.now(), m.guild.id, ctx.author.id)
         else:
             await self.insert_quote(ctx, from_user, message, datetime.now(), ctx.guild.id, ctx.author.id)
+    
+    @commands.command()
+    @mod_only()
+    async def rmquote(self, ctx, number):
+            server = ctx.guild.id
+            quotes = session.query(Quote).filter(Quote.server == server)
+
+            # heaven help you if you manage to have two quotes with the same number
+            q = quotes.filter(Quote.number == number).first()
+
+            if not q:
+                await ctx.send("it is NOT. THERE.")
+
             
 
+            session.delete(q)
+
+            #then decrement all greater quote numbers by 1
+
+            largerquotes = quotes.filter(Quote.number > number)
 
 
+            for qq in largerquotes:
+                qq.number = qq.number-1
+
+
+            session.commit()
+            await ctx.send("ok")
