@@ -1,5 +1,7 @@
 {
     "recommendations": [
-        "alexcvzz.vscode-sqlite"
+        "alexcvzz.vscode-sqlite",
+        "ms-python.python",
+        "vscodevim.vim"
     ]
 }
