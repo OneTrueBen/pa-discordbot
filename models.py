@@ -2,6 +2,7 @@ from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.dialects.mysql import BIGINT
+import datetime
 engine = create_engine('sqlite:///db.sqlite3')
 from sqlalchemy.ext.declarative import declarative_base
 Base = declarative_base()
@@ -17,6 +18,7 @@ class Quote(Base):
     server = Column(String)
     added_by = Column(String)
     number = Column(Integer)
+    created_date = Column(DateTime, default=datetime.datetime.utcnow)
 
 class ModRole(Base):
     __tablename__ = 'modroles'
