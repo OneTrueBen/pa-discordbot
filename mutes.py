@@ -1,4 +1,3 @@
-from random import randint
 from typing import Optional
 from datetime import datetime, timedelta
 from threading import Timer
@@ -32,7 +31,7 @@ class Mutes(commands.Cog):
             return
 
         if not time_amount and not time_units:
-            duration_in_seconds = randint(1800, 10800)
+            duration_in_seconds = 3600
         else:
             time_units = time_units.lower()
             if time_units == 'seconds' or time_units == 'second' or time_units == 's':
