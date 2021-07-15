@@ -31,7 +31,7 @@ class Mutes(commands.Cog):
             return
 
         if not time_amount and not time_units:
-            duration_in_seconds = 3600
+            duration_in_seconds = 60
         else:
             time_units = time_units.lower()
             if time_units == 'seconds' or time_units == 'second' or time_units == 's':
