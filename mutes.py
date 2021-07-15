@@ -25,21 +25,24 @@ class Mutes(commands.Cog):
 
     @commands.command()
     @mod_only()
-    async def mute(self, ctx, user: discord.Member, time_amount: int, time_units: str, reason: Optional[str]):
+    async def mute(self, ctx, user: discord.Member, time_amount: Optional[int], time_units: Optional[str], reason: Optional[str]):
         if user.id in self.pending_unmutes:
             await ctx.send(f"{user.display_name} is already muted!")
             return
 
-        time_units = time_units.lower()
-        if time_units == 'seconds' or time_units == 'second' or time_units == 's':
-            duration_in_seconds = time_amount
-        elif time_units == 'minutes'or time_units == 'minute' or time_units == 'm':
-            duration_in_seconds = time_amount * 60
-        elif time_units == 'hours' or time_units == 'hour' or time_units == 'h':
-            duration_in_seconds = time_amount * 3600
+        if not time_amount and not time_units:
+            duration_in_seconds = 60
         else:
-            await ctx.send("Invalid time unit. Please use seconds, minutes, or hours.")
-            return
+            time_units = time_units.lower()
+            if time_units == 'seconds' or time_units == 'second' or time_units == 's':
+                duration_in_seconds = time_amount
+            elif time_units == 'minutes'or time_units == 'minute' or time_units == 'm':
+                duration_in_seconds = time_amount * 60
+            elif time_units == 'hours' or time_units == 'hour' or time_units == 'h':
+                duration_in_seconds = time_amount * 3600
+            else:
+                await ctx.send("Invalid time unit. Please use seconds, minutes, or hours.")
+                return
 
         expiration_time = datetime.now() + timedelta(seconds=duration_in_seconds)
 
@@ -65,12 +68,17 @@ class Mutes(commands.Cog):
             await user.add_roles(muted_role, reason=reason if not (reason is None) else "Goka")
         if unmuted_role in user.roles:
             await user.remove_roles(unmuted_role, reason=reason if not (reason is None) else "Goka")
-        
+
+
         # Send confirmation message
-        if reason is None:
-            await ctx.send(f"{user.display_name} was muted by {ctx.author.display_name}")
-        else:
-            await ctx.send(f"{user.display_name} was muted by {ctx.author.display_name} because {reason}")
+
+        msg = f"{user.display_name} was muted by {ctx.author.display_name}"
+        
+        if not time_amount and not time_units:
+            msg += f" for {duration_in_seconds} seconds :stuck_out_tongue_winking_eye:"
+        if reason:
+            msg += f" because {reason}"
+        await ctx.send(msg)
 
         # Schedule the user to be unmuted
         unmute_task = self.bot.loop.create_task(self.timedUnmute(user, ctx.author, ctx.guild.id, ctx.channel, duration_in_seconds), name=f"unmute {user.display_name}")
