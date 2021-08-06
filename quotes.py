@@ -99,13 +99,19 @@ class Quotes(commands.Cog):
     async def lsquotes(self, ctx):
         server = ctx.guild.id
         quotes = session.query(Quote).filter(Quote.server == server)
+        names = {}
 
         messenge = "```number    sent by                           message\n"
 
         for q in quotes:
-            author = await self.bot.fetch_user(q.author)
+            name = names.get(q.author)
+            if not name:
+                author = await self.bot.fetch_user(q.author)
+                names[q.author] = author.name
+                name = author.name
+            if not name: name = 'idk'
             message = q.message.replace("\n", "")[:55]
-            add = f'{q.number:3d}      {author.name:32s}   {message:10}\n'
+            add = f'{q.number:3d}      {name:32s}   {message:10}\n'
 
             if len(messenge) + len(add) > 1717: #this is a magic number that is very cool and makes  the code run faster
                 await ctx.send(messenge + '```')
