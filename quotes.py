@@ -95,3 +95,29 @@ class Quotes(commands.Cog):
 
             session.commit()
             await ctx.send("ok")
+    @commands.command()
+    async def lsquotes(self, ctx):
+        server = ctx.guild.id
+        quotes = session.query(Quote).filter(Quote.server == server)
+
+        messenge = "```number    sent by                           message\n"
+
+        for q in quotes:
+            author = await self.bot.fetch_user(q.author)
+            message = q.message.replace("\n", "")[:55]
+            add = f'{q.number:3d}      {author.name:32s}   {message:10}\n'
+
+            if len(messenge) + len(add) > 1717: #this is a magic number that is very cool and makes  the code run faster
+                await ctx.send(messenge + '```')
+                messenge = "```"
+            messenge += add
+        await ctx.send(messenge + '```') 
+
+
+
+
+
+
+
+
+
