@@ -3,6 +3,7 @@ from discord.ext import commands
 from quotes import Quotes
 from modrole import ModRoles
 from mutes import Mutes
+from ranked_polls import RankedChoicePolls
 from models import Session
 
 intents = discord.Intents.default()
@@ -30,5 +31,6 @@ async def setup_cogs():
     await client.add_cog(Quotes(client))
     await client.add_cog(ModRoles(client))
     await client.add_cog(Mutes(client))
+    await client.add_cog(RankedChoicePolls(client))
 
 client.setup_cogs = setup_cogs
