@@ -6,6 +6,12 @@ from settings import settings
 import functools
 session = Session()
 
+
+def get_mod_roles_for_server(server_id: int) -> list[str]:
+    """Get all mod role IDs for a given server."""
+    mod_roles = session.query(ModRole.role).filter(ModRole.server == server_id).all()
+    return [role for role, in mod_roles]
+
 # MAKE SURE ModRoles cog is LOADED. or you will DIE INSTANTLY
 
 def owner_only():
