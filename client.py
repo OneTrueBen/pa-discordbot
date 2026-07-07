@@ -3,8 +3,7 @@ from discord.ext import commands
 from quotes import Quotes
 from modrole import ModRoles
 from mutes import Mutes
-from aliases import Aliases
-from models import Alias, Session
+from models import Session
 
 intents = discord.Intents.default()
 intents.members = True
@@ -15,29 +14,21 @@ session = Session()
 
 @client.event
 async def on_ready():
-    print('We have logged in as {0.user}'.format(client))
+    print(f'Logged in as {client.user} (ID: {client.user.id})')
+    print('------')
+    
+    # Sync application commands
+    try:
+        synced = await client.tree.sync()
+        print(f'Synced {len(synced)} application commands')
+    except Exception as e:
+        print(f'Error syncing commands: {e}')
 
-@client.event
-async def on_command_error(ctx, error):
-    if isinstance(error, commands.CommandNotFound):
-        msg = ctx.message.content[1:]
-        words = msg.split(' ')
-        cmd = words[0]
-        args = words[1:]
-        aliased_command = session.query(Alias).filter(Alias.server_id == ctx.guild.id, Alias.alias == cmd).one_or_none()
-        if not (aliased_command is None):
-            new_msg = ' '.join([aliased_command.command] + args)
-            ctx.message.content = new_msg
-            await client.get_command(aliased_command.command).invoke(ctx)
-        elif '*' in msg:
-            # This was just someone using italics
-            return
-        else:
-            await ctx.send(f"Unrecognized command: '{cmd}'")
-    else:
-        raise error
+# Remove on_command_error handler as slash commands use interaction.response
 
-client.add_cog(Quotes(client))
-client.add_cog(ModRoles(client))
-client.add_cog(Mutes(client))
-client.add_cog(Aliases(client))
+async def setup_cogs():
+    await client.add_cog(Quotes(client))
+    await client.add_cog(ModRoles(client))
+    await client.add_cog(Mutes(client))
+
+client.setup_cogs = setup_cogs

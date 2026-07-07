@@ -1,10 +1,11 @@
 from typing import Optional
 from datetime import datetime, timedelta
-from threading import Timer
 import asyncio
+import re
 
 from discord.ext import commands
 import discord
+from discord import app_commands
 
 from models import Server, Mute, Session
 from modrole import mod_only
@@ -14,78 +15,108 @@ session = Session()
 class Mutes(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-
-        # discord API is dumb so we need to manually suppress role events we caused ourselves (why can't I just see the author of the edit)
         self.suppress_role_update_events = False
-
-        # a dictionary of member id -> pending unmute tasks so that we can avoid double-unmuting
         self.pending_unmutes = {}
 
     # GENERAL NOTE: we use "guild" to refer to the discord API's model of a guild/server and "server" to refer to our own server info as stored in the db
 
-    @commands.command()
+    @app_commands.command(name="mute", description="Mute a user for a specified duration")
+    @app_commands.describe(
+        user="User to mute",
+        duration="Duration of mute (e.g., 30m, 2h, 1d)",
+        reason="Reason for mute"
+    )
+    @app_commands.checks.has_permissions(manage_roles=True)
     @mod_only()
-    async def mute(self, ctx, user: discord.Member, time_amount: Optional[int], time_units: Optional[str], reason: Optional[str]):
+    async def slash_mute(self, interaction: discord.Interaction, user: discord.Member, duration: Optional[str] = None, reason: Optional[str] = None):
+        await interaction.response.defer(ephemeral=True)
+        
         if user.id in self.pending_unmutes:
-            await ctx.send(f"{user.display_name} is already muted!")
+            await interaction.followup.send(f"{user.display_name} is already muted!")
             return
 
-        if not time_amount and not time_units:
-            duration_in_seconds = 60
-        else:
-            time_units = time_units.lower()
-            if time_units == 'seconds' or time_units == 'second' or time_units == 's':
-                duration_in_seconds = time_amount
-            elif time_units == 'minutes'or time_units == 'minute' or time_units == 'm':
-                duration_in_seconds = time_amount * 60
-            elif time_units == 'hours' or time_units == 'hour' or time_units == 'h':
-                duration_in_seconds = time_amount * 3600
-            else:
-                await ctx.send("Invalid time unit. Please use seconds, minutes, or hours.")
+        # Parse duration
+        if duration:
+            try:
+                time_amount, time_units = self._parse_duration(duration)
+                duration_in_seconds = self._convert_to_seconds(time_amount, time_units)
+            except ValueError as e:
+                await interaction.followup.send(str(e))
                 return
+        else:
+            duration_in_seconds = 60  # Default to 60 seconds
+            time_amount, time_units = 60, 's'
 
         expiration_time = datetime.now() + timedelta(seconds=duration_in_seconds)
 
         if len(session.query(Mute).filter(Mute.muted_id == user.id).all()) > 0:
-            await ctx.send(f"{user.display_name} is already muted.")
+            await interaction.followup.send(f"{user.display_name} is already muted.")
             return
 
-        server = await self.getServerFromGuild(ctx.guild)
-        unmuted_role, muted_role = await self.getMutedRoles(ctx.guild, server)
+        server = await self.getServerFromGuild(interaction.guild)
+        unmuted_role, muted_role = await self.getMutedRoles(interaction.guild, server)
             
         # Add a record of the mute to the database
         mute_record = Mute()
-        mute_record.server_id = ctx.guild.id
+        mute_record.server_id = interaction.guild_id
         mute_record.muted_id = user.id
-        mute_record.muter_id = ctx.author.id
+        mute_record.muter_id = interaction.user.id
         mute_record.expiration_time = expiration_time
-        mute_record.channel_id = ctx.channel.id
+        mute_record.channel_id = interaction.channel_id
         session.add(mute_record)
         session.commit()
 
         # Add the muted role to the user and remove the unmuted role (but only if necessary)
         if not (muted_role in user.roles):
-            await user.add_roles(muted_role, reason=reason if not (reason is None) else "Goka")
+            await user.add_roles(muted_role, reason=reason if reason else "Goka")
         if unmuted_role in user.roles:
-            await user.remove_roles(unmuted_role, reason=reason if not (reason is None) else "Goka")
-
+            await user.remove_roles(unmuted_role, reason=reason if reason else "Goka")
 
         # Send confirmation message
-
-        msg = f"{user.display_name} was muted by {ctx.author.display_name}"
-        
-        if not time_amount and not time_units:
-            msg += f" for {duration_in_seconds} seconds :stuck_out_tongue_winking_eye:"
+        msg = f"{user.display_name} was muted by {interaction.user.display_name}"
+        if duration:
+            msg += f" for {duration}"
         if reason:
             msg += f" because {reason}"
-        await ctx.send(msg)
-
+        
+        await interaction.followup.send(msg)
+        
         # Schedule the user to be unmuted
-        unmute_task = self.bot.loop.create_task(self.timedUnmute(user, ctx.author, ctx.guild.id, ctx.channel, duration_in_seconds), name=f"unmute {user.display_name}")
+        unmute_task = self.bot.loop.create_task(
+            self.timedUnmute(user, interaction.user, interaction.guild_id, interaction.channel, duration_in_seconds), 
+            name=f"unmute {user.display_name}"
+        )
         self.pending_unmutes[user.id] = unmute_task
 
+    def _parse_duration(self, duration_str: str) -> tuple:
+        """Parse duration string like '30m', '2h', '1d' into amount and units"""
+        if not duration_str:
+            return None, None
+            
+        # Extract numeric part and unit part
+        match = re.match(r'^(\d+)([smhd])$', duration_str.lower())
+        if not match:
+            raise ValueError("Invalid duration format. Please use format like '30m', '2h', '1d'")
+            
+        amount = int(match.group(1))
+        unit = match.group(2)
+        return amount, unit
+        
+    def _convert_to_seconds(self, time_amount: int, time_units: str) -> int:
+        """Convert time amount and units to seconds"""
+        if time_units == 's':
+            return time_amount
+        elif time_units == 'm':
+            return time_amount * 60
+        elif time_units == 'h':
+            return time_amount * 3600
+        elif time_units == 'd':
+            return time_amount * 86400
+        else:
+            raise ValueError("Invalid time unit. Please use s, m, h, or d.")
+
     # the guts of the unmute command, which has a couple different wrappers
-    async def unmuteLogic(self, unmuted, unmuter, server_id, channel):
+    async def unmuteLogic(self, unmuted: discord.Member, unmuter: discord.Member, server_id: int, channel: discord.TextChannel):
         # we do this immediately so that the timed unmute can't go off while we're running. We can't cancel yet though because otherwise timed unmutes kill themselves.
         if unmuted.id in self.pending_unmutes:
             pending_unmute = self.pending_unmutes.pop(unmuted.id)
@@ -108,7 +139,7 @@ class Mutes(commands.Cog):
             session.delete(record)
         session.commit()
 
-        # Add the muted role to the user and remove the unmuted role (but only if necessary)
+        # Add the unmuted role to the user and remove the muted role (but only if necessary)
         if not (unmuted_role in unmuted.roles):
             await unmuted.add_roles(unmuted_role)
         if muted_role in unmuted.roles:
@@ -117,17 +148,20 @@ class Mutes(commands.Cog):
         await channel.send(f"{unmuted.display_name} was unmuted by {unmuter.display_name}")
 
         # if there was an unmute pending for this user, cancel it 
-        if not (pending_unmute is None):
+        if pending_unmute:
             pending_unmute.cancel()
     
-    # the unmute command itself, which pulls the info for the unmute primarily from the context
-    @commands.command()
+    @app_commands.command(name="unmute", description="Unmute a user")
+    @app_commands.describe(user="User to unmute")
+    @app_commands.checks.has_permissions(manage_roles=True)
     @mod_only()
-    async def unmute(self, ctx, user: discord.Member):
-        await self.unmuteLogic(user, ctx.author, ctx.guild.id, ctx.channel)
+    async def slash_unmute(self, interaction: discord.Interaction, user: discord.Member):
+        await interaction.response.defer(ephemeral=True)
+        await self.unmuteLogic(user, interaction.user, interaction.guild_id, interaction.channel)
+        await interaction.followup.send(f"{user.display_name} has been unmuted")
 
     # A little wrapper of a wrapper that allows us to use unmute with threading timers
-    async def timedUnmute(self, unmuted, unmuter, server_id, channel, delay_in_seconds):
+    async def timedUnmute(self, unmuted: discord.Member, unmuter: discord.Member, server_id: int, channel: discord.TextChannel, delay_in_seconds: int):
         await asyncio.sleep(delay_in_seconds)
         # if the id is missing, it means that a manual unmute is currently running
         if unmuted.id in self.pending_unmutes:
@@ -139,21 +173,30 @@ class Mutes(commands.Cog):
         current_time = datetime.now()
         for mute_record in session.query(Mute).all():
             guild = self.bot.get_guild(mute_record.server_id)
+            if guild is None:
+                continue
+                
             unmuted = guild.get_member(mute_record.muted_id)
+            if unmuted is None:
+                continue
+                
             unmuter = guild.get_member(mute_record.muter_id)
             channel = guild.get_channel(mute_record.channel_id)
 
             if mute_record.expiration_time < current_time:
                 # Immediately unmute the user and apologize for the missed expiration time 
-                await self.unmuteLogic(unmuted, unmuter, mute_record.server_id, channel)
-                await channel.send(f"Apologies for the delay {unmuted.mention}, the mods disconnected me so I couldn't unmute you earlier.")
+                await self.unmuteLogic(unmuted, unmuter or self.bot.user, mute_record.server_id, channel)
+                if channel:
+                    await channel.send(f"Apologies for the delay {unmuted.mention}, the mods disconnected me so I couldn't unmute you earlier.")
             else:
                 # Schedule the user to be unmuted
                 remaining_time = mute_record.expiration_time - current_time
-                unmute_task = self.bot.loop.create_task(self.timedUnmute(unmuted, unmuter, guild.id, channel, remaining_time.total_seconds()), name=f"unmute {unmuted.display_name}")
+                unmute_task = self.bot.loop.create_task(
+                    self.timedUnmute(unmuted, unmuter or self.bot.user, guild.id, channel, remaining_time.total_seconds()), 
+                    name=f"unmute {unmuted.display_name}"
+                )
                 self.pending_unmutes[unmuted.id] = unmute_task
 
-        
         
         for guild in self.bot.guilds:
             server = await self.getServerFromGuild(guild)
@@ -262,7 +305,7 @@ class Mutes(commands.Cog):
         for role in guild.roles:
                 if role.position < guild.me.top_role.position:
                     # using a bitmask to remove only speaking and message-sending
-                    await role.edit(permissions=discord.Permissions(role.permissions.value & 2145384447))      
+                    await role.edit(permissions=discord.Permissions(role.permissions.value & 2145384447))       
         unmuted_role = await guild.create_role(
             reason="Unmuted role that the bot needs to work did not previously exist. Users will now be unable to talk without this role.",
             name="Unmuted",
@@ -287,12 +330,12 @@ class Mutes(commands.Cog):
         muted_role = guild.get_role(server.muted_role_id)
         unmuted_role = guild.get_role(server.unmuted_role_id)
         if muted_role is None:
-            print(f"The server {server.name} deleted their muted role. Now we have to make a new one >:(.")
+            print(f"The server {server.name} deleted their muted role. Now we have to make a new one >:(")
             muted_role = await self.makeMutedRole(guild)
             server.muted_role_id = muted_role.id
             session.commit()
         if unmuted_role is None:
-            print(f"The server {server.name} deleted their unmuted role. Now we have to make a new one >:(.")
+            print(f"The server {server.name} deleted their unmuted role. Now we have to make a new one >:(")
             unmuted_role = await self.makeUnmutedRole(guild)
             server.unmuted_role_id = unmuted_role.id
             session.commit()
